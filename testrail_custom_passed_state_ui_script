@@ -1,0 +1,168 @@
+name: Custom Passed Test Status Percentages
+description: Accounts for custom passed status' within the UI.
+author: Ryan Bezdicek
+version: 1.0
+includes: milestones/overview/|milestones/view/|plans/view/|runs/view/|runs/overview/
+excludes:
+
+js:
+$(document).ready(function(){
+
+    /*
+    CONFIGURATION
+    */
+    var passed_status = ['custom_status1_count', 'passed_count'],
+        async_requests = true;
+    /*
+    END CONFIGURATION
+    */
+
+    function get_id(ele) {
+        return ele.attr("id").split("-")[1];
+    }
+
+    function get_numbers(obj) {
+        var r_obj = new Object();
+        // Count total number of tests
+        r_obj.total_tests = obj.custom_status1_count +
+        obj.custom_status2_count + obj.custom_status3_count +
+        obj.custom_status4_count + obj.custom_status5_count +
+        obj.custom_status6_count + obj.custom_status7_count +
+        obj.failed_count + obj.passed_count + obj.retest_count +
+        obj.untested_count + obj.blocked_count;
+        // Count number of tests that are considered 'passed'
+        r_obj.total_passed = 0;
+        $.each(passed_status, function(index, value) {
+            r_obj.total_passed = r_obj.total_passed + obj[value];
+        });
+        return r_obj;
+    }
+
+    function set_precent_span(obj, percent) {
+        // Note this will for the <strong> elements. We want this.
+        if (percent === 100) {
+            obj.removeClass("percent").addClass("percentSmall");
+        }
+        obj.html("<span>" + percent + "%</span>");
+    }
+
+    function set_percent_title(percent) {
+        $("#pieChartPercentBox .percent .title").text(percent + '%');
+    }
+
+    function calculate_percentage(obj) {
+        var percent = 0;
+        if (obj.passed !== 0) {
+            percent = Math.round(obj.total_passed / obj.total_tests * 100);
+        }
+        return percent;
+    }
+
+    function get_percent(obj) {
+        return calculate_percentage(get_numbers(obj));
+    }
+
+    function get_url(ele) {
+        // Get ID of the run/plan
+        var base = "index.php?/api/v2/",
+        id = get_id(ele),
+        api = "get_run/";
+        // Need to determine if this is a plan or run
+        if (ele.find("a").attr('href').split('plans').length > 1) {
+            api = "get_plan/";
+        }
+        return base + api + id;
+    }
+
+    function set_sub_percentages() {
+        $("[id^=run]").each(function(index) {
+            // Get ID of the run/plan
+            var ele = $(this),
+                url = get_url(ele);
+            // Pass in the URL and the element where to place the percent
+            // we know that the class will be percent and not percentSmall
+            // because if it was percentSmall it would already be 100%
+            $.ajax({
+                url: url,
+                async: async_requests,
+                contentType: "application/json"
+            }).success(function(data) {
+                set_precent_span(ele.find(".percent"), get_percent(data));
+            });
+        });
+    }
+
+    function build_object(data, obj) {
+        $.each(data, function(key, value) {
+            var id = value.milestone_id,
+            new_value = get_numbers(value);
+            if (id !== null) {
+                if (obj.hasOwnProperty(id)) {
+                    obj[id].total_tests = obj[id].total_tests + new_value.total_tests;
+                    obj[id].total_passed = obj[id].total_passed + new_value.total_passed;
+                } else {
+                    obj[id] = new_value;
+                }
+            }
+        });
+        return obj;
+    }
+
+    var uri = window.location.href.split('?/')[1].split('/').slice(0, 2);
+
+    if (uri[0] === 'plans' && uri[1] === 'view') { // plans/view pages
+        set_percent_title(get_percent(uiscripts.context.plan));
+        set_sub_percentages();
+    }
+    else if (uri[0] === 'runs') { //runs pages
+        if (uri[1] == 'view'){
+            set_percent_title(get_percent(uiscripts.context.run));
+        }
+        else if (uri[1] == 'overview'){
+            set_sub_percentages();
+        }
+    }
+    else if (uri[0] === 'milestones') { // milestone pages
+        var obj = new Object(),
+        project_id = uiscripts.context.project.id;
+        $.ajax({
+            url: '/index.php?/api/v2/get_plans/' + project_id,
+            async: async_requests,
+            contentType: "application/json"
+        }).success(function(data) {
+            obj = build_object(data, obj);
+            $.ajax({
+                url: '/index.php?/api/v2/get_runs/' + project_id,
+                contentType: "application/json"
+            }).success(function(data) {
+                obj = build_object(data, obj);
+                if (uri[1] === 'view') {
+                    // Change the main percentage
+                    var id = uiscripts.context.milestone.id;
+                    set_percent_title(calculate_percentage(obj[id]));
+                    // Change the secondary percentages
+                    $("[id^=run]").each(function(index) {
+                        var percent_obj = $(this).find(".percent");
+                        $.ajax({
+                            url: get_url($(this)),
+                            async: false,
+                            contentType: "application/json"
+                        }).success(function(data) {
+                            var percent = get_percent(data);
+                            if (percent_obj.is('td') === true) {
+                                percent = '<strong>' + percent + '</strong>';
+                            }
+                            set_precent_span(percent_obj, percent);
+                        });
+                    });
+                } else if (uri[1] === 'overview') {
+                    $("[id^=milestone]").each(function(index) {
+                        // Get ID of the run/plan
+                        var id = get_id($(this));
+                        set_precent_span($(this).find(".percent"), calculate_percentage(obj[id]));
+                    });
+                }
+            });
+        });
+    }
+});
