@@ -52,7 +52,7 @@ $(document).ready(function(){
 
     function calculate_percentage(obj) {
         var percent = 0;
-        if (obj.passed !== 0) {
+        if (obj.total_passed !== 0) {
             percent = Math.round(obj.total_passed / obj.total_tests * 100);
         }
         return percent;
