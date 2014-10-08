@@ -1,7 +1,7 @@
 name: Custom Passed Test Status Percentages
 description: Accounts for custom passed status' within the UI.
 author: Ryan Bezdicek
-version: 1.0
+version: 2.0
 includes: milestones/overview/|milestones/view/|plans/view/|runs/view/|runs/overview/
 excludes:
 
@@ -17,8 +17,17 @@ $(document).ready(function(){
     END CONFIGURATION
     */
 
-    function get_id(ele) {
-        return ele.attr("id").split("-")[1];
+    function get_id(ele, attr, splitter){
+        a = ele.attr(attr).split(splitter)
+        return a[a.length - 1];
+    }
+
+    function get_id_from_href(ele) {
+        return get_id(ele.find('a'), "href", "/")
+    }
+
+    function get_id_from_element_id(ele) {
+        return get_id(ele, "id", "-");
     }
 
     function get_numbers(obj) {
@@ -47,7 +56,7 @@ $(document).ready(function(){
     }
 
     function set_percent_title(percent) {
-        $("#pieChartPercentBox .percent .title").text(percent + '%');
+        $(".chart-pie-percent-title").text(percent + '%');
     }
 
     function calculate_percentage(obj) {
@@ -62,10 +71,10 @@ $(document).ready(function(){
         return calculate_percentage(get_numbers(obj));
     }
 
-    function get_url(ele) {
+    function get_url(ele, id_func) {
         // Get ID of the run/plan
         var base = "index.php?/api/v2/",
-        id = get_id(ele),
+        id = id_func(ele),
         api = "get_run/";
         // Need to determine if this is a plan or run
         if (ele.find("a").attr('href').split('plans').length > 1) {
@@ -74,11 +83,11 @@ $(document).ready(function(){
         return base + api + id;
     }
 
-    function set_sub_percentages() {
-        $("[id^=run]").each(function(index) {
+    function set_sub_percentages(selector, id_func) {
+        $(selector).each(function(index) {
             // Get ID of the run/plan
             var ele = $(this),
-                url = get_url(ele);
+                url = get_url(ele, id_func);
             // Pass in the URL and the element where to place the percent
             // we know that the class will be percent and not percentSmall
             // because if it was percentSmall it would already be 100%
@@ -87,7 +96,7 @@ $(document).ready(function(){
                 async: async_requests,
                 contentType: "application/json"
             }).success(function(data) {
-                set_precent_span(ele.find(".percent"), get_percent(data));
+                set_precent_span(ele.find(".chart-bar-percent"), get_percent(data));
             });
         });
     }
@@ -98,8 +107,10 @@ $(document).ready(function(){
             new_value = get_numbers(value);
             if (id !== null) {
                 if (obj.hasOwnProperty(id)) {
-                    obj[id].total_tests = obj[id].total_tests + new_value.total_tests;
-                    obj[id].total_passed = obj[id].total_passed + new_value.total_passed;
+                    obj[id].total_tests = obj[id].total_tests +
+                                                        new_value.total_tests;
+                    obj[id].total_passed = obj[id].total_passed +
+                                                        new_value.total_passed;
                 } else {
                     obj[id] = new_value;
                 }
@@ -112,14 +123,14 @@ $(document).ready(function(){
 
     if (uri[0] === 'plans' && uri[1] === 'view') { // plans/view pages
         set_percent_title(get_percent(uiscripts.context.plan));
-        set_sub_percentages();
+        set_sub_percentages(".detailsContainer", get_id_from_href);
     }
     else if (uri[0] === 'runs') { //runs pages
         if (uri[1] == 'view'){
             set_percent_title(get_percent(uiscripts.context.run));
         }
         else if (uri[1] == 'overview'){
-            set_sub_percentages();
+            set_sub_percentages("[id^=run]", get_id_from_element_id);
         }
     }
     else if (uri[0] === 'milestones') { // milestone pages
@@ -141,10 +152,10 @@ $(document).ready(function(){
                     var id = uiscripts.context.milestone.id;
                     set_percent_title(calculate_percentage(obj[id]));
                     // Change the secondary percentages
-                    $("[id^=run]").each(function(index) {
-                        var percent_obj = $(this).find(".percent");
+                    $(".row").each(function(index) {
+                        var percent_obj = $(this).find(".chart-bar-percent");
                         $.ajax({
-                            url: get_url($(this)),
+                            url: get_url($(this), get_id_from_href),
                             async: false,
                             contentType: "application/json"
                         }).success(function(data) {
@@ -155,11 +166,24 @@ $(document).ready(function(){
                             set_precent_span(percent_obj, percent);
                         });
                     });
+                    $("#completed table tr").each(function(index) {
+                        var percent_obj = $(this).children("td").last();
+                        $.ajax({
+                            url: get_url($(this), get_id_from_href),
+                            async: false,
+                            contentType: "application/json"
+                        }).success(function(data) {
+                            var percent = '<strong>' + get_percent(data) +
+                                                                    '</strong>';
+                            set_precent_span(percent_obj, percent);
+                        });
+                    });
                 } else if (uri[1] === 'overview') {
-                    $("[id^=milestone]").each(function(index) {
+                    $(".row").each(function(index) {
                         // Get ID of the run/plan
-                        var id = get_id($(this));
-                        set_precent_span($(this).find(".percent"), calculate_percentage(obj[id]));
+                        var id = get_id_from_href($(this));
+                        set_precent_span($(this).find(".chart-bar-percent"),
+                                                calculate_percentage(obj[id]));
                     });
                 }
             });
